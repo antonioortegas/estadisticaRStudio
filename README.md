@@ -1,0 +1,2 @@
+# estadisticaRStudio
+Scripts en R
