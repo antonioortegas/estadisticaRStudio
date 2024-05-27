@@ -2,6 +2,7 @@ library(tidyverse)
 rutaDatos <- "C:/Users/Kal/dev/estadisticaRStudio/data/18517.csv"
 rutaGraficos <- "C:/Users/Kal/dev/estadisticaRStudio/graphs/"
 rutaEval <- "C:/Users/Kal/dev/estadisticaRStudio/data/eval.csv"
+rutaEvalX <- "C:/Users/Kal/dev/estadisticaRStudio/data/evalX.csv"
 
 # 1
 # Uso un tibble en lugar de un dataframe. Se podria cargar como df con read.csv y despues hacer tibble(df), pero con read_csv me lo ahorro
@@ -43,20 +44,29 @@ desviaciones
 # 5
 # defino una funcion para calcular los modelos y valores pedidos de una columna
 # despues, hago un map_dlb como en el ejercicio anterior para las columnas solicitadas
-calcularCoeficienteReg <- function(columna){
-  modelo <- lm(df$IMC ~ columna)
-  coeficienteRegresion <- summary(modelo)$coefficients[2]
+variablesPredictoras <- names(df[3:14])
+
+# Separo esta funcion y uso collapse="+" para poder reutilizarla mas adelante
+ajusteLineal <- function(x, y, df) {
+  lm(str_c(y, "~", str_c(x, collapse="+")), df)
 }
 
-coefRegresion <- df[3:14] %>% map_dbl(calcularCoeficienteReg)
+calcularCoeficienteReg <- function(x, y, df){
+  modelo <- ajusteLineal(x, y, df)
+  summary(modelo)$coefficients[2]
+}
+
+calcularCoeficienteDet <- function(x, y, df){
+  modelo <- ajusteLineal(x, y, df)
+  summary(modelo)$r.squared
+}
+
+coefRegresion <- variablesPredictoras %>% map_dbl(calcularCoeficienteReg, y="IMC", df=df)
+coefRegresion <- tibble(columna=variablesPredictoras, coeficientes=coefRegresion)
 coefRegresion
 
-calcularCoeficienteDet <- function(columna){
-  modelo <- lm(df$IMC ~ columna)
-  coefDeterminacion <- summary(modelo)$r.squared
-}
-
-coefDeterminacion <- df[3:14] %>% map_dbl(calcularCoeficienteDet)
+coefDeterminacion <- variablesPredictoras %>% map_dbl(calcularCoeficienteDet, y="IMC", df=df)
+coefDeterminacion <- tibble(columna=variablesPredictoras, coeficientes=coefDeterminacion)
 coefDeterminacion
 
 # 6
@@ -70,7 +80,7 @@ dibujarGrafica <- function(columna, nombre_columna){
   plot(columna, df$IMC, xlab = nombre_columna, ylab = "IMC")
   if(is.numeric(columna)){
     # Si la columna es numérica, gráfico de dispersión y cálculo del lm para la recta
-    mod <- lm(df$IMC ~ columna)
+    mod <- ajusteLineal(nombre_columna, "IMC", df)
     abline(mod)
   }
   dev.off()
@@ -79,3 +89,94 @@ dibujarGrafica <- function(columna, nombre_columna){
 # Llamamos a la función utilizando iwalk (para que no devuelva nada, solo haga los graficos)
 # uso iwalk en lugar de walk para poder pasar los nombres de las columnas
 df[3:14] %>% iwalk(dibujarGrafica)
+
+# 7
+# Separar en tres conjuntos
+# 60 train, 20 test, 20 valid
+separarSets <- function(df, propTrain, propTest){
+  rDf    <- 1:nrow(df)
+  rTrain <- sample(rDf, propTrain * length(rDf))
+  rTemp  <- setdiff(rDf, rTrain)
+  rTest  <- sample(rTemp, propTest * length(rTemp))
+  rValid <- setdiff(rTemp, rTest)
+  
+  list(train=df[rTrain,], test=df[rTest,], valid=df[rValid,]) 
+}
+dfSep <- separarSets(df, 0.6, 0.5)
+
+# 8
+# seleccionar de las 12 la que mejor explica el IMC
+# funcion para calcular el R2 ajustado de un modelo sobre un df arbitrario
+calcR2ajustado <- function(df, modelo, y) {
+  MSE  <- mean((df[[y]] - predict.lm(modelo, df)) ^ 2)
+  varY <- mean(df[[y]] ^ 2) - mean(df[[y]]) ^ 2
+  R2   <- 1 - MSE / varY
+  R2ajustado  <- 1 - (1- R2) * (nrow(df) - 1) / (nrow(df) - modelo$rank)
+  
+  tibble(MSE=MSE, varY=varY, R2=R2, R2ajustado=R2ajustado)
+}
+# calcular el R2 ajustado de una variable usando train y test
+calcModR2 <- function(dfTrain, dfTest, y, x) {
+  mod <- ajusteLineal(x, y, dfTrain)
+  calcR2ajustado(dfTest, mod, y)$R2ajustado
+}
+
+R2ajustado <- variablesPredictoras %>% map_dbl(calcModR2, dfTrain = dfSep$train, dfTest=dfSep$test, y="IMC")
+mejorVariable <- variablesPredictoras[which.max(R2ajustado)]
+mejorVariable
+
+# 9 seleccionar el mejor modelo
+# la siguiente funcion toma como parametros mi df de train y test, y las variables predictoras
+# la funcion itera sobre todas las variables, y calcula el mejor r2.
+# Añade dicha variable al modelo, y repetimos sobre las variables restantes hasta que le modelo deje de mejorar
+encontrarMejorAjuste <- function(dfTrain, dfTest, variables) {
+  bestVars <- character(0)
+  aR2      <- 0
+  
+  repeat {
+    aR2v <- map_dbl(variables, ~calcModR2(dfTrain, dfTest, "IMC", c(bestVars, .)))
+    i    <- which.max(aR2v)
+    aR2M <- aR2v[i]
+    if (aR2M <= aR2) break
+    
+    cat(sprintf("%1.4f %s\n", aR2M, variables[i]))
+    aR2 <- aR2M
+    bestVars <- c(bestVars, variables[i])
+    variables   <- variables[-i]
+  }
+  
+  mod <- ajusteLineal(df=dfTrain, y="IMC", x=bestVars)
+  
+  list(vars=bestVars, mod=mod)
+}
+modeloMultivariable <- encontrarMejorAjuste(dfSep$train, dfSep$test, variablesPredictoras)
+
+# 10
+# evaluacion del modelo
+
+calcR2ajustado(df=dfSep$valid, modelo=modeloMultivariable$mod, y="IMC")
+
+# 11
+# Usar el modelo creado para añadir una columna IMC y una columna Peso al df eval
+# Cargamos el df "eval"
+dfEval <- read_csv(rutaEval,
+               col_types = cols(
+                 .default = col_double(),
+                 sexo = col_factor(),
+                 dietaEsp = col_factor(),
+                 nivEstPad = col_factor(),
+                 nivEstudios = col_factor(),
+                 nivIngresos = col_factor()
+               ))
+dfEval$IMC <- round(predict.lm(modeloMultivariable$mod, dfEval), 3)
+dfEval$peso <- round(dfEval$IMC * (dfEval$altura^2), 3)
+
+write_csv(dfEval, rutaEvalX)
+
+# 12
+# Conclusiones sobre el modelo creado
+# Utilidad podría tener el modelo matemático que has obtenido
+# Qué se puede deducir a partir del modelo sobre la relación entre las variables
+# Problemas que has encontrado en el desarrollo
+# Qué te ha llamado la atención en el proceso
+# Qué más podría hacerse y cómo plantearlo
