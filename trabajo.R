@@ -1,8 +1,8 @@
 library(tidyverse)
-rutaDatos <- "C:/Users/Kal/dev/estadisticaRStudio/data/18517.csv"
-rutaGraficos <- "C:/Users/Kal/dev/estadisticaRStudio/graphs/"
-rutaEval <- "C:/Users/Kal/dev/estadisticaRStudio/data/eval.csv"
-rutaEvalX <- "C:/Users/Kal/dev/estadisticaRStudio/data/evalX.csv"
+rutaDatos <- "./data/18517.csv"
+rutaGraficos <- "./graphs/"
+rutaEval <- "./data/eval.csv"
+rutaEvalX <- "./data/evalX.csv"
 
 # 1
 # Uso un tibble en lugar de un dataframe. Se podria cargar como df con read.csv y despues hacer tibble(df), pero con read_csv me lo ahorro
@@ -75,10 +75,10 @@ coefDeterminacion
 # plot devuelve uno de dispersion para numericas y boxplot para cualitativas
 # por lo que solo compruebo si numerica para la recta
 
-dibujarGrafica <- function(columna, nombre_columna){
+dibujarGrafica <- function(nombre_columna){
   jpeg(str_c(rutaGraficos, nombre_columna, ".jpeg"))
-  plot(columna, df$IMC, xlab = nombre_columna, ylab = "IMC")
-  if(is.numeric(columna)){
+  plot(df[[nombre_columna]], df$IMC, xlab = nombre_columna, ylab = "IMC")
+  if(is.numeric(df[[nombre_columna]])){
     # Si la columna es numérica, gráfico de dispersión y cálculo del lm para la recta
     mod <- ajusteLineal(nombre_columna, "IMC", df)
     abline(mod)
@@ -86,9 +86,8 @@ dibujarGrafica <- function(columna, nombre_columna){
   dev.off()
 }
 
-# Llamamos a la función utilizando iwalk (para que no devuelva nada, solo haga los graficos)
-# uso iwalk en lugar de walk para poder pasar los nombres de las columnas
-df[3:14] %>% iwalk(dibujarGrafica)
+# Llamamos a la función utilizando walk (para que no devuelva nada, solo haga los graficos)
+variablesPredictoras %>% walk(dibujarGrafica)
 
 # 7
 # Separar en tres conjuntos
@@ -160,16 +159,16 @@ calcR2ajustado(df=dfSep$valid, modelo=modeloMultivariable$mod, y="IMC")
 # Usar el modelo creado para añadir una columna IMC y una columna Peso al df eval
 # Cargamos el df "eval"
 dfEval <- read_csv(rutaEval,
-               col_types = cols(
-                 .default = col_double(),
-                 sexo = col_factor(),
-                 dietaEsp = col_factor(),
-                 nivEstPad = col_factor(),
-                 nivEstudios = col_factor(),
-                 nivIngresos = col_factor()
-               ))
-dfEval$IMC <- round(predict.lm(modeloMultivariable$mod, dfEval), 3)
-dfEval$peso <- round(dfEval$IMC * (dfEval$altura^2), 3)
+                   col_types = cols(
+                     .default = col_double(),
+                     sexo = col_factor(),
+                     dietaEsp = col_factor(),
+                     nivEstPad = col_factor(),
+                     nivEstudios = col_factor(),
+                     nivIngresos = col_factor()
+                   ))
+dfEval$IMC <- predict.lm(modeloMultivariable$mod, dfEval)
+dfEval$peso <- dfEval$IMC * (dfEval$altura^2)
 
 write_csv(dfEval, rutaEvalX)
 
