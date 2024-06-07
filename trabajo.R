@@ -171,11 +171,3 @@ dfEval$IMC <- predict.lm(modeloMultivariable$mod, dfEval)
 dfEval$peso <- dfEval$IMC * (dfEval$altura^2)
 
 write_csv(dfEval, rutaEvalX)
-
-# 12
-# Conclusiones sobre el modelo creado
-# Utilidad podría tener el modelo matemático que has obtenido
-# Qué se puede deducir a partir del modelo sobre la relación entre las variables
-# Problemas que has encontrado en el desarrollo
-# Qué te ha llamado la atención en el proceso
-# Qué más podría hacerse y cómo plantearlo
